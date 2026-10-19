@@ -17,6 +17,13 @@ How well an automated judge reproduces one expert's Pass/Fail labels on grounded
   drew the sample once into `data/sample.json`, and a test fails if a fresh draw would differ. `uv run ljvel
   candidates` prints the counts.
 
+- **Labeling** (`labeling/`, `configs/labeling.toml`): a page on localhost shows one answer at a time, with the
+  question, the reference answers and the paragraphs that decide it. Every answer to a question shows the same
+  paragraphs, so their number doesn't reveal the writer. The page never shows the writer or answer-F1. The labeler
+  marks Pass or Fail and writes what went wrong in every Fail. `uv run ljvel label` starts the first pass.
+  `uv run ljvel label --relabel` starts a blind second pass over 60 of the answers, which measures the labeler's
+  self-agreement. `uv run ljvel labels` prints progress and the Fail notes. Labels live in `labels/`.
+
 QASPER (Dasigi et al., 2021) is licensed CC BY 4.0. `data/` holds its questions, answers and the paragraphs the
 labels need.
 

@@ -1,0 +1,9 @@
+# One person labels the 300 sampled answers Pass or Fail, with a note on what went wrong in every Fail.
+# A blind second pass over some of them, at least a day later, gives that person's self-agreement: the ceiling for
+# every judge. Label files are relative to this file and tracked in git: they are the ground truth.
+first = "../labels/first.jsonl"
+relabel = "../labels/relabel.jsonl"
+relabel_size = 60
+# Differs from the sample's seed, so the relabel order is not the first pass's order.
+relabel_seed = 1
+port = 8765
