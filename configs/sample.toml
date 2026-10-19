@@ -1,0 +1,5 @@
+# The answers one person labels. Four groups (the three writer runs and all reflection revisions) give 75 each.
+size = 300
+# About a third goes to test, which is scored once, at the end.
+test_size = 100
+seed = 0

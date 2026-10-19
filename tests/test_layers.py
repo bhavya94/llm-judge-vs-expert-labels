@@ -5,7 +5,7 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "llm_judge_vs_expert_labels"
 BELOW = {
-    # "package": {"packages it may import"}, lowest layer first. Fill in as packages appear.
+    "data": set(),
 }
 
 
