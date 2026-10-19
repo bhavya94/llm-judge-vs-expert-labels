@@ -8,6 +8,12 @@ from llm_judge_vs_expert_labels.data.records import Candidate, Paragraph, Questi
 DATA = Path(__file__).resolve().parents[3] / "data"
 
 
+def _paper_order(paragraph_id: str) -> tuple[int, int]:
+    """`s10p1` comes after `s2p0`: section, then paragraph, as numbers."""
+    section, paragraph = paragraph_id[1:].split("p")
+    return int(section), int(paragraph)
+
+
 def _rows(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
@@ -44,6 +50,13 @@ class Corpus:
                 merged[key] = row | {"sources": [row["source"]]}
         return [Candidate(r["question_id"], r["answer"], tuple(r["cited"]), tuple(r["seen"]), tuple(r["sources"]),
                           r["kind"] == "revision", r["answer_f1"]) for r in merged.values()]
+
+    def evidence(self, question_id: str) -> list[Paragraph]:
+        """Every paragraph any writer saw or cited for the question, plus the annotators' evidence, in paper order. All
+        answers to a question show this same set, so its size never hints at which writer answered."""
+        ids = {pid for row in self.answers if row["question_id"] == question_id for pid in row["seen"] + row["cited"]}
+        ids |= {pid for r in self.questions[question_id].references for pid in r.evidence_ids}
+        return [self.paragraph(question_id, pid) for pid in sorted(ids, key=_paper_order)]
 
     def paragraph(self, question_id: str, paragraph_id: str) -> Paragraph:
         return self.paragraphs[self.questions[question_id].paper_id, paragraph_id]

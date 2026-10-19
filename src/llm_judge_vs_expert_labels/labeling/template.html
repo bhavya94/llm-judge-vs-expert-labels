@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Answer Labeling</title>
+<style>
+  :root { color-scheme: light; --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --ring:rgba(11,11,11,.10); --band:rgba(11,11,11,.06); --accent:#2a78d6; --pass:#1baf7a; --fail:#d03b3b;
+    --expert:rgba(27,175,122,.14); }
+  @media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) { color-scheme: dark; --page:#0d0d0d;
+    --surface:#1a1a19; --ink:#f0efec; --ink-2:#c3c2b7; --muted:#898781; --grid:#2c2c2a; --ring:rgba(255,255,255,.10);
+    --band:rgba(255,255,255,.07); --accent:#3987e5; --pass:#199e70; --fail:#e05252; --expert:rgba(25,158,112,.18); } }
+  :root[data-theme="dark"] { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink-2:#c3c2b7;
+    --grid:#2c2c2a; --ring:rgba(255,255,255,.10); --band:rgba(255,255,255,.07); --accent:#3987e5; --pass:#199e70;
+    --fail:#e05252; --expert:rgba(25,158,112,.18); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 64px; display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  header { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+  h1 { font-size: 20px; margin: 0; } .muted { color: var(--muted); font-size: 13px; }
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 4px; }
+  .question { font-size: 18px; font-weight: 600; margin: 2px 0 6px; }
+  .answer { font-family: ui-monospace, Menlo, monospace; font-size: 14px; background: var(--band); border-radius: 8px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .passage { border-left: 3px solid var(--grid); padding: 6px 10px; margin: 8px 0; font-size: 14px; color: var(--ink-2); overflow-wrap: anywhere; }
+  .passage.cited { border-left-color: var(--accent); } .passage.expert { background: var(--expert); }
+  .pid { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted); margin-right: 6px; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 0 5px; margin-right: 4px; border: 1px solid var(--ring); }
+  .tag.cited { color: var(--accent); } .tag.expert { color: var(--pass); }
+  .ref { margin: 6px 0; font-size: 14px; } .ref .type { color: var(--muted); font-size: 12px; margin-left: 6px; }
+  .panel { position: sticky; top: 12px; align-self: start; }
+  .verdicts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 12px; }
+  button { font: inherit; border-radius: 8px; border: 1px solid var(--ring); background: var(--surface); color: var(--ink); padding: 8px 12px; cursor: pointer; }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .verdict.on[data-v="pass"] { background: var(--pass); color: #fff; border-color: var(--pass); }
+  .verdict.on[data-v="fail"] { background: var(--fail); color: #fff; border-color: var(--fail); }
+  textarea { width: 100%; min-height: 110px; font: inherit; font-size: 14px; border-radius: 8px; border: 1px solid var(--ring); background: var(--page); color: var(--ink); padding: 8px; resize: vertical; }
+  .row { display: flex; gap: 8px; margin-top: 10px; } .row button { flex: 1; } .primary { background: var(--ink); color: var(--surface); }
+  .status { font-size: 13px; min-height: 20px; margin-top: 8px; color: var(--ink-2); } .status.error { color: var(--fail); }
+  .dots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 12px; }
+  .dot { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--ring); background: var(--page); padding: 0; }
+  .dot.pass { background: var(--pass); } .dot.fail { background: var(--fail); } .dot.here { outline: 2px solid var(--ink); outline-offset: 1px; }
+  kbd { font-family: ui-monospace, Menlo, monospace; font-size: 12px; border: 1px solid var(--ring); border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title">Label answers</h1>
+    <span class="muted" id="progress"></span>
+    <span class="muted" id="hint"></span>
+  </header>
+  <section>
+    <div class="card">
+      <p class="label" id="paper"></p>
+      <p class="question" id="question"></p>
+      <p class="label">Answer</p>
+      <div class="answer" id="answer"></div>
+      <p class="muted" id="cited"></p>
+    </div>
+    <div class="card"><p class="label">Expert answers</p><div id="refs"></div></div>
+    <div class="card"><p class="label" id="passages-label"></p><div id="passages"></div></div>
+  </section>
+  <aside class="panel">
+    <div class="card">
+      <p class="label">Would a reader accept this answer?</p>
+      <div class="verdicts">
+        <button class="verdict" data-v="pass">Pass <kbd>p</kbd></button>
+        <button class="verdict" data-v="fail">Fail <kbd>f</kbd></button>
+      </div>
+      <p class="label"><label for="note">What went wrong? The first problem a reader would hit.</label></p>
+      <textarea id="note" placeholder="e.g. says Unanswerable, but s3p1 names the dataset"></textarea>
+      <div class="row"><button id="prev">← Prev <kbd>k</kbd></button><button class="primary" id="save">Save <kbd>⌘↵</kbd></button><button id="next">Next <kbd>j</kbd></button></div>
+      <div class="status" id="status" role="status"></div>
+      <div class="dots" id="dots"></div>
+    </div>
+  </aside>
+</main>
+<script>
+const DATA = __DATA__;
+const items = DATA.items, labels = DATA.labels, blind = DATA.blind;
+let i = Math.max(0, items.findIndex(t => !labels[t.id])), verdict = null;
+const $ = id => document.getElementById(id);
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+function show(n) {
+  i = (n + items.length) % items.length;
+  const t = items[i], saved = labels[t.id];
+  verdict = saved ? saved.verdict : null;
+  $("paper").textContent = t.paper_title;
+  $("question").textContent = t.question;
+  $("answer").textContent = t.answer || "(empty)";
+  const cited = t.passages.filter(p => p.cited).map(p => p.id);
+  $("cited").textContent = cited.length ? "Cites " + cited.join(", ") : "Cites nothing";
+  $("refs").replaceChildren(...t.references.map(r => { const p = el("p", "ref", r.text); p.append(el("span", "type", r.type)); return p; }));
+  $("passages-label").textContent = `${t.passages.length} paragraphs from the paper, in paper order`;
+  $("passages").replaceChildren(...t.passages.map(p => {
+    const d = el("div", "passage" + (p.cited ? " cited" : "") + (p.expert ? " expert" : ""));
+    d.append(el("span", "pid", p.id));
+    if (p.cited) d.append(el("span", "tag cited", "cited"));
+    if (p.expert) d.append(el("span", "tag expert", "expert evidence"));
+    d.append(el("div", null, p.section.replaceAll(" ::: ", " › ")), el("div", null, p.text));
+    return d;
+  }));
+  $("note").value = saved ? saved.note : "";
+  $("status").textContent = ""; $("status").className = "status";
+  paint();
+  window.scrollTo(0, 0);
+}
+
+function paint() {
+  document.querySelectorAll(".verdict").forEach(b => b.classList.toggle("on", b.dataset.v === verdict));
+  const done = items.filter(t => labels[t.id]).length;
+  $("progress").textContent = `${i + 1} of ${items.length} · ${done} labeled`;
+  $("dots").replaceChildren(...items.map((t, n) => {
+    const b = el("button", "dot " + (labels[t.id] ? labels[t.id].verdict : "") + (n === i ? " here" : ""));
+    b.title = `Answer ${n + 1}`; b.setAttribute("aria-label", b.title); b.onclick = () => show(n); return b;
+  }));
+}
+
+async function save() {
+  const t = items[i];
+  if (!verdict) { $("status").textContent = "Choose Pass or Fail first."; return; }
+  if (verdict === "fail" && !$("note").value.trim()) { $("status").textContent = "Say what went wrong: the note becomes a failure mode."; return; }
+  try {
+    const r = await fetch("/label", {method: "POST", headers: {"Content-Type": "application/json"},
+                                     body: JSON.stringify({candidate_id: t.id, verdict, note: $("note").value})});
+    if (!r.ok) throw new Error(await r.text());
+    labels[t.id] = await r.json();
+    $("note").blur();  // so the next p, f, j or k acts on the page instead of typing into the next note
+    const next = items.findIndex((u, n) => n > i && !labels[u.id]);
+    show(next >= 0 ? next : i);
+    if (next < 0) $("status").textContent = "Saved. Every answer after this one is labeled.";
+  } catch (e) { $("status").textContent = "Not saved: " + e.message; $("status").className = "status error"; }
+}
+
+document.querySelectorAll(".verdict").forEach(b => b.onclick = () => { verdict = b.dataset.v; paint(); });
+$("save").onclick = save; $("prev").onclick = () => show(i - 1); $("next").onclick = () => show(i + 1);
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); return save(); }
+  if (e.target.tagName === "TEXTAREA" || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "p" || e.key === "f") { verdict = e.key === "p" ? "pass" : "fail"; paint(); if (verdict === "fail") $("note").focus(); }
+  else if (e.key === "j" || e.key === "ArrowRight") show(i + 1);
+  else if (e.key === "k" || e.key === "ArrowLeft") show(i - 1);
+});
+$("title").textContent = blind ? "Relabel answers (blind)" : "Label answers";
+$("hint").textContent = (blind ? "Your first labels stay hidden in this round. " : "")
+  + "The writer and answer-F1 never show, so they can't sway the label.";
+show(i);
+</script>
+</body>
+</html>
