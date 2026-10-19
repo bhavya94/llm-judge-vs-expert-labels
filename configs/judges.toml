@@ -12,3 +12,20 @@ thresholds = [0.3, 0.5, 0.7]
 bootstrap_resamples = 2000
 confidence = 0.95
 seed = 0
+
+[llm]
+# Prompted judges. One run judges every dev answer with one model; replies are cached in .cache/llm, so a rerun is
+# free. The cap is per run and refuses any call whose worst case would pass it. The project's total cap is $25.
+cap = 5.0
+max_tokens = 300
+
+# Prices in dollars per million tokens. Check them against the current price list before a paid run.
+[llm.models.haiku]
+id = "claude-haiku-4-5-20251001"
+input_price = 1.0
+output_price = 5.0
+
+[llm.models.sonnet]
+id = "claude-sonnet-5-5"
+input_price = 3.0
+output_price = 15.0

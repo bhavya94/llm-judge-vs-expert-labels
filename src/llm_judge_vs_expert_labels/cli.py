@@ -9,9 +9,11 @@ from llm_judge_vs_expert_labels.data.sample import F1_BANDS, cell, group, load
 from llm_judge_vs_expert_labels.evaluation.agreement import Agreement, bootstrap_from_config
 from llm_judge_vs_expert_labels.judges.code import CONFIG as JUDGES_CONFIG
 from llm_judge_vs_expert_labels.judges.code import CodeChecks, F1Threshold
+from llm_judge_vs_expert_labels.judges.prompted import PromptedJudge
 from llm_judge_vs_expert_labels.labeling.items import Item
 from llm_judge_vs_expert_labels.labeling.server import Rounds
 from llm_judge_vs_expert_labels.labeling.summary import summarize
+from llm_judge_vs_expert_labels.llm.client import BudgetExceeded, NotCached
 
 
 def _candidates(args: argparse.Namespace) -> None:
@@ -65,6 +67,44 @@ def _labels(args: argparse.Namespace) -> None:
           f"fail with answer-F1 0.5 or more: {summary['fail_high_f1']}")
 
 
+def _judge(args: argparse.Namespace) -> None:
+    corpus = Corpus.load()
+    dev = load(corpus.candidates())[1].dev
+    client = None
+    if args.paid:
+        import anthropic
+        client = anthropic.Anthropic()
+    judge = PromptedJudge.from_config(args.model, corpus, client)
+    print(f"{judge.llm.model} on {len(dev)} dev answers: at most ${judge.estimate(dev):.2f} with an empty cache; "
+          f"cap ${judge.llm.meter.cap:.2f}")
+    if not args.paid:
+        print("Nothing was spent. Add --run to judge.")
+        return
+    try:
+        passed = sum(judge.judge(c).passed for c in dev)
+    except BudgetExceeded as error:
+        raise SystemExit(f"stopped: {error}") from None
+    finally:
+        print(f"{judge.llm.calls} API calls, ${judge.llm.meter.spent:.2f} spent "
+              f"(${judge.llm.dollars_uncached():.2f} with an empty cache)")
+    print(f"passes {passed / len(dev):.0%} of dev; {judge.unreadable} unreadable replies counted as Fail")
+
+
+def _cached_judges(corpus: Corpus, dev: list) -> list[PromptedJudge]:
+    """Prompted judges whose verdicts on all of dev are cached. `agree` never calls the API."""
+    judges = []
+    for model in tomllib.loads(JUDGES_CONFIG.read_text())["llm"]["models"]:
+        judge = PromptedJudge.from_config(model, corpus, client=None)
+        try:
+            for candidate in dev:
+                judge.judge(candidate)
+        except NotCached:
+            print(f"  {model}: not judged yet; run `ljvel judge {model} --run`")
+            continue
+        judges.append(judge)
+    return judges
+
+
 def _interval(i) -> str:
     return f"{i.estimate:.2f} [{i.low:.2f}, {i.high:.2f}]"
 
@@ -78,6 +118,7 @@ def _agree(args: argparse.Namespace) -> None:
     judges = [CodeChecks.from_config(corpus)] + [
         F1Threshold(t) for t in tomllib.loads(JUDGES_CONFIG.read_text())["f1"]["thresholds"]]
     print(f"dev: {len(labeled)} of {len(split.dev)} answers labeled. Test stays unscored until the final run.")
+    judges += _cached_judges(corpus, split.dev)
     for judge in judges:
         rate = sum(judge.judge(c).passed for c in split.dev) / len(split.dev)
         print(f"  {judge.name:<18} passes {rate:.0%} of dev")
@@ -106,5 +147,9 @@ def main(argv: list[str] | None = None) -> None:
         run=_labels)
     commands.add_parser("agree", help="each judge's agreement with the labels on dev, with 95% intervals").set_defaults(
         run=_agree)
+    judge = commands.add_parser("judge", help="estimate the cost of a prompted judge on dev; --run judges")
+    judge.add_argument("model", help="a key under [llm.models] in configs/judges.toml")
+    judge.add_argument("--run", dest="paid", action="store_true", help="call the API, within the cap; replies are cached")
+    judge.set_defaults(run=_judge)
     args = parser.parse_args(argv)
     args.run(args)

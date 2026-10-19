@@ -8,6 +8,7 @@ requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.5.4",
     "metrics-from-scratch @ git+https://github.com/bhavya94/metrics-from-scratch",
+    "anthropic>=1.15.0",
 ]
 
 [project.scripts]

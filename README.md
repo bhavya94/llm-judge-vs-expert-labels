@@ -27,6 +27,10 @@ How well an automated judge reproduces one expert's Pass/Fail labels on grounded
   reason. The first judges are code, free and instant: answer-F1 at three thresholds, and three form checks. Those
   checks fail an "Unanswerable" that every reference answers, an answer where every reference says Unanswerable, an
   answer with no citation, and an answer over 35 words.
+- **Prompted judges** (`judges/prompted.py`, `llm/`): Haiku 4.5 and Sonnet 5.5 read the labeling page as text. The
+  text holds the same question, references, paragraphs and marks, and never the writer or answer-F1. Each replies with
+  a reason, then Pass or Fail. `uv run ljvel judge haiku` prints the worst-case cost on dev and spends nothing.
+  `--run` judges within a hard cap. Replies are cached in `.cache/llm`, so `agree` reads them and never calls the API.
 - **Agreement** (`evaluation/`): TPR is the share of the person's Passes a judge passes. TNR is the share of their
   Fails it fails. Cohen's kappa is agreement beyond chance. Each comes with a 95% bootstrap interval. The person's
   blind relabels against their first labels give the ceiling. `uv run ljvel agree` scores every judge on dev; test
@@ -47,6 +51,7 @@ uv run ljvel --help
 `uv run python scripts/build_views.py`.
 
 ## Layers
-A package never imports a package listed after it, and only `cli.py` prints. `tests/test_layers.py` enforces both.
+A package never imports a package listed after it, and only `cli.py` prints. `llm/`, the cached and capped model
+client, imports nothing from this project. `tests/test_layers.py` enforces both.
 
 ## Limits
