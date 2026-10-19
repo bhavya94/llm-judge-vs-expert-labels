@@ -1,6 +1,8 @@
 """Progress and a first look at the labels: Pass/Fail per writer group, where answer-F1 disagrees, and the notes that
 become failure modes."""
 
+from collections import Counter
+
 from llm_judge_vs_expert_labels.data.records import Candidate
 from llm_judge_vs_expert_labels.data.sample import group
 from llm_judge_vs_expert_labels.labeling.labels import Label
@@ -16,4 +18,6 @@ def summarize(sample: list[Candidate], labels: dict[str, Label]) -> dict:
     return {"sample": len(sample), "labeled": len(labeled), "by_group": by_group,
             "pass_low_f1": sum(label.verdict == "pass" and c.answer_f1 < 0.5 for c, label in labeled),
             "fail_high_f1": sum(label.verdict == "fail" and c.answer_f1 >= 0.5 for c, label in labeled),
-            "notes": [label.note for c, label in labeled if label.verdict == "fail"]}
+            "notes": [label.note for c, label in labeled if label.verdict == "fail"],
+            "by_tag": dict(Counter(label.tag for c, label in labeled if label.verdict == "fail" and label.tag)),
+            "untagged_fails": sum(label.verdict == "fail" and not label.tag for c, label in labeled)}

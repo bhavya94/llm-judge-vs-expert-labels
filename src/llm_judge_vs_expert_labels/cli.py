@@ -56,6 +56,10 @@ def _labels(args: argparse.Namespace) -> None:
           f"relabel: {len(rounds.relabel.latest().keys() & {c.id for c in sample})} of {rounds.relabel_size}")
     for note in summary["notes"]:
         print(f"  {note}")
+    if rounds.modes:
+        for mode in rounds.modes:
+            print(f"  {mode.name:<28} {summary['by_tag'].get(mode.name, 0):>3} fails")
+        print(f"fails without a tag yet: {summary['untagged_fails']}")
     if summary["labeled"] < summary["sample"]:
         print("Pass/Fail by writer and by answer-F1 show once the first pass is complete, so they can't sway it.")
         return

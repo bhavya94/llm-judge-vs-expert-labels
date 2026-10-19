@@ -23,6 +23,9 @@ How well an automated judge reproduces one expert's Pass/Fail labels on grounded
   marks Pass or Fail and writes what went wrong in every Fail. `uv run ljvel label` starts the first pass.
   `uv run ljvel label --relabel` starts a blind second pass over 60 of the answers, which measures the labeler's
   self-agreement. `uv run ljvel labels` prints progress and the Fail notes. Labels live in `labels/`.
+- **Error analysis before tags:** the first 100 answers get free-text notes only (open coding). The notes are then
+  grouped into 4–7 failure modes with counts (axial coding), written to `configs/labeling.toml`. From then on, every
+  Fail also needs a mode, picked with keys 1 to 7, and earlier Fails come back for one.
 - **Judges** (`judges/`, `configs/judges.toml`): every judge takes one answer and returns Pass or Fail with a
   reason. The first judges are code, free and instant: answer-F1 at three thresholds, and three form checks. Those
   checks fail an "Unanswerable" that every reference answers, an answer where every reference says Unanswerable, an

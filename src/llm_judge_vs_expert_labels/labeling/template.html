@@ -30,6 +30,10 @@
   .tag { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 0 5px; margin-right: 4px; border: 1px solid var(--ring); }
   .tag.cited { color: var(--accent); } .tag.expert { color: var(--pass); }
   .ref { margin: 6px 0; font-size: 14px; } .ref .type { color: var(--muted); font-size: 12px; margin-left: 6px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } @media (max-width: 600px) { .pair { grid-template-columns: 1fr; } }
+  .tags { display: grid; gap: 6px; margin: 4px 0 12px; } .tag-btn { text-align: left; font-size: 14px; }
+  .tag-btn.on { background: var(--fail); color: #fff; border-color: var(--fail); }
+  .dot.untagged { box-shadow: inset 0 0 0 3px var(--surface); }
   .panel { position: sticky; top: 12px; align-self: start; }
   .verdicts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 12px; }
   button { font: inherit; border-radius: 8px; border: 1px solid var(--ring); background: var(--surface); color: var(--ink); padding: 8px 12px; cursor: pointer; }
@@ -56,11 +60,11 @@
     <div class="card">
       <p class="label" id="paper"></p>
       <p class="question" id="question"></p>
-      <p class="label">Answer</p>
-      <div class="answer" id="answer"></div>
-      <p class="muted" id="cited"></p>
+      <div class="pair">
+        <div><p class="label">Answer</p><div class="answer" id="answer"></div><p class="muted" id="cited"></p></div>
+        <div><p class="label">Expert answers</p><div id="refs"></div></div>
+      </div>
     </div>
-    <div class="card"><p class="label">Expert answers</p><div id="refs"></div></div>
     <div class="card"><p class="label" id="passages-label"></p><div id="passages"></div></div>
   </section>
   <aside class="panel">
@@ -70,6 +74,7 @@
         <button class="verdict" data-v="pass">Pass <kbd>p</kbd></button>
         <button class="verdict" data-v="fail">Fail <kbd>f</kbd></button>
       </div>
+      <div id="tag-box" hidden><p class="label">Failure mode</p><div class="tags" id="tags"></div></div>
       <p class="label"><label for="note">What went wrong? The first problem a reader would hit.</label></p>
       <textarea id="note" placeholder="e.g. says Unanswerable, but s3p1 names the dataset"></textarea>
       <div class="row"><button id="prev">← Prev <kbd>k</kbd></button><button class="primary" id="save">Save <kbd>⌘↵</kbd></button><button id="next">Next <kbd>j</kbd></button></div>
@@ -80,8 +85,9 @@
 </main>
 <script>
 const DATA = __DATA__;
-const items = DATA.items, labels = DATA.labels, blind = DATA.blind;
-let i = Math.max(0, items.findIndex(t => !labels[t.id])), verdict = null;
+const items = DATA.items, labels = DATA.labels, blind = DATA.blind, modes = DATA.modes;
+let tag = "";
+let i = Math.max(0, items.findIndex(t => !labels[t.id] || (DATA.modes.length && labels[t.id].verdict === "fail" && !labels[t.id].tag))), verdict = null;
 const $ = id => document.getElementById(id);
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
@@ -89,6 +95,7 @@ function show(n) {
   i = (n + items.length) % items.length;
   const t = items[i], saved = labels[t.id];
   verdict = saved ? saved.verdict : null;
+  tag = saved ? saved.tag || "" : "";
   $("paper").textContent = t.paper_title;
   $("question").textContent = t.question;
   $("answer").textContent = t.answer || "(empty)";
@@ -112,10 +119,13 @@ function show(n) {
 
 function paint() {
   document.querySelectorAll(".verdict").forEach(b => b.classList.toggle("on", b.dataset.v === verdict));
+  $("tag-box").hidden = !modes.length || verdict !== "fail";
+  document.querySelectorAll(".tag-btn").forEach(b => b.classList.toggle("on", b.dataset.t === tag));
   const done = items.filter(t => labels[t.id]).length;
   $("progress").textContent = `${i + 1} of ${items.length} · ${done} labeled`;
   $("dots").replaceChildren(...items.map((t, n) => {
-    const b = el("button", "dot " + (labels[t.id] ? labels[t.id].verdict : "") + (n === i ? " here" : ""));
+    const l = labels[t.id], untagged = modes.length && l && l.verdict === "fail" && !l.tag;
+    const b = el("button", "dot " + (l ? l.verdict : "") + (untagged ? " untagged" : "") + (n === i ? " here" : ""));
     b.title = `Answer ${n + 1}`; b.setAttribute("aria-label", b.title); b.onclick = () => show(n); return b;
   }));
 }
@@ -123,14 +133,16 @@ function paint() {
 async function save() {
   const t = items[i];
   if (!verdict) { $("status").textContent = "Choose Pass or Fail first."; return; }
+  if (verdict === "fail" && modes.length && !tag) { $("status").textContent = "Choose a failure mode: press its number."; return; }
   if (verdict === "fail" && !$("note").value.trim()) { $("status").textContent = "Say what went wrong: the note becomes a failure mode."; return; }
   try {
     const r = await fetch("/label", {method: "POST", headers: {"Content-Type": "application/json"},
-                                     body: JSON.stringify({candidate_id: t.id, verdict, note: $("note").value})});
+                                     body: JSON.stringify({candidate_id: t.id, verdict, note: $("note").value, tag: verdict === "fail" ? tag : ""})});
     if (!r.ok) throw new Error(await r.text());
     labels[t.id] = await r.json();
     $("note").blur();  // so the next p, f, j or k acts on the page instead of typing into the next note
-    const next = items.findIndex((u, n) => n > i && !labels[u.id]);
+    const todo = u => !labels[u.id] || (modes.length && labels[u.id].verdict === "fail" && !labels[u.id].tag);
+    const next = items.findIndex((u, n) => n > i && todo(u));
     show(next >= 0 ? next : i);
     if (next < 0) $("status").textContent = "Saved. Every answer after this one is labeled.";
   } catch (e) { $("status").textContent = "Not saved: " + e.message; $("status").className = "status error"; }
@@ -141,13 +153,20 @@ $("save").onclick = save; $("prev").onclick = () => show(i - 1); $("next").oncli
 document.addEventListener("keydown", e => {
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); return save(); }
   if (e.target.tagName === "TEXTAREA" || e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key === "p" || e.key === "f") { verdict = e.key === "p" ? "pass" : "fail"; paint(); if (verdict === "fail") $("note").focus(); }
+  if (e.key === "p" || e.key === "f") { verdict = e.key === "p" ? "pass" : "fail"; paint(); if (verdict === "fail" && !modes.length) $("note").focus(); }
+  else if (/^[1-9]$/.test(e.key) && verdict === "fail" && modes[+e.key - 1]) { e.preventDefault(); chooseTag(modes[+e.key - 1].name); }
   else if (e.key === "j" || e.key === "ArrowRight") show(i + 1);
   else if (e.key === "k" || e.key === "ArrowLeft") show(i - 1);
 });
 $("title").textContent = blind ? "Relabel answers (blind)" : "Label answers";
 $("hint").textContent = (blind ? "Your first labels stay hidden in this round. " : "")
   + "The writer and answer-F1 never show, so they can't sway the label.";
+function chooseTag(name) { tag = name; $("status").textContent = ""; paint(); $("note").focus(); }
+$("tags").replaceChildren(...modes.map((m, n) => {
+  const b = el("button", "tag-btn"); b.dataset.t = m.name; b.title = m.definition;
+  b.append(el("kbd", null, String(n + 1)), " " + m.name); b.onclick = () => chooseTag(m.name); return b;
+}));
+if (!modes.length) $("hint").textContent += " Open coding: write a note on every answer, Pass or Fail.";
 show(i);
 </script>
 </body>

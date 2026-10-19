@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 from llm_judge_vs_expert_labels.labeling.items import Item
-from llm_judge_vs_expert_labels.labeling.labels import Label, LabelStore
+from llm_judge_vs_expert_labels.labeling.labels import FailureMode, Label, LabelStore
 
 CONFIG = Path(__file__).resolve().parents[3] / "configs" / "labeling.toml"
 TEMPLATE = Path(__file__).with_name("template.html")
@@ -35,45 +35,56 @@ class Rounds:
     relabel_size: int
     relabel_seed: int
     port: int
+    modes: tuple[FailureMode, ...]
+    """Empty during open coding; filled after axial coding."""
 
     @classmethod
     def from_config(cls, path: Path = CONFIG) -> "Rounds":
         config = tomllib.loads(path.read_text())
         return cls(LabelStore((path.parent / config["first"]).resolve()),
                    LabelStore((path.parent / config["relabel"]).resolve()),
-                   config["relabel_size"], config["relabel_seed"], config["port"])
+                   config["relabel_size"], config["relabel_seed"], config["port"],
+                   tuple(FailureMode(m["name"], m["definition"]) for m in config.get("failure_modes", [])))
 
     def first_round(self, items: list[Item]) -> "LabelingServer":
-        return LabelingServer(items, self.first, blind=False)
+        return LabelingServer(items, self.first, blind=False, modes=self.modes)
 
     def relabel_round(self, items: list[Item]) -> "LabelingServer":
         """A seeded subset in a new order. Blind: the page never shows the first label."""
         if missing := [item.id for item in items if item.id not in self.first.latest()]:
             raise ValueError(f"{len(missing)} of {len(items)} answers have no first label yet; finish the first pass")
         chosen = random.Random(self.relabel_seed).sample(items, self.relabel_size)
-        return LabelingServer(chosen, self.relabel, blind=True)
+        return LabelingServer(chosen, self.relabel, blind=True, modes=self.modes)
 
 
 class LabelingServer:
-    def __init__(self, items: list[Item], labels: LabelStore, blind: bool):
+    def __init__(self, items: list[Item], labels: LabelStore, blind: bool, modes: tuple[FailureMode, ...] = ()):
         self.items = {item.id: item for item in items}
         self.order = [item.id for item in items]
         self.labels = labels
         self.blind = blind
+        self.modes = modes
 
     def page(self) -> str:
         """Rendered on every request, so a reload shows the labels on disk."""
         latest = self.labels.latest()
         data = {"items": [self.items[i].to_row() for i in self.order], "blind": self.blind,
+                "modes": [{"name": m.name, "definition": m.definition} for m in self.modes],
                 "labels": {i: latest[i].to_row() for i in self.order if i in latest}}
         return render(data, TEMPLATE.read_text())
 
     def label(self, body: dict) -> Label:
-        """Saves one label from the page's {"candidate_id", "verdict", "note"}."""
+        """Saves one label from the page's {"candidate_id", "verdict", "note", "tag"}. Once failure modes exist, every
+        Fail needs one of them as its tag; a Pass never has a tag."""
         if not isinstance(body, dict) or (item := self.items.get(body.get("candidate_id"))) is None:
             raise BadLabel("unknown candidate_id")
+        tag, names = str(body.get("tag") or ""), {m.name for m in self.modes}
+        if body.get("verdict") == "fail" and names and tag not in names:
+            raise BadLabel(f"a Fail needs one of the failure modes as its tag: {', '.join(sorted(names))}")
+        if tag and (body.get("verdict") != "fail" or tag not in names):
+            raise BadLabel(f"unexpected tag {tag!r}")
         try:
-            label = Label.of(item, body.get("verdict"), str(body.get("note") or ""))
+            label = Label.of(item, body.get("verdict"), str(body.get("note") or ""), tag)
         except ValueError as error:
             raise BadLabel(str(error)) from None
         self.labels.save(label)

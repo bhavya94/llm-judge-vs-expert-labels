@@ -9,7 +9,7 @@ import pytest
 from llm_judge_vs_expert_labels.data.corpus import Corpus
 from llm_judge_vs_expert_labels.data.sample import group, load
 from llm_judge_vs_expert_labels.labeling.items import Item
-from llm_judge_vs_expert_labels.labeling.labels import Label, LabelStore
+from llm_judge_vs_expert_labels.labeling.labels import FailureMode, Label, LabelStore
 from llm_judge_vs_expert_labels.labeling.server import BadLabel, Rounds
 from llm_judge_vs_expert_labels.labeling.summary import summarize
 
@@ -31,7 +31,11 @@ def items(corpus, sample) -> list[Item]:
 
 @pytest.fixture
 def rounds(tmp_path) -> Rounds:
-    return Rounds(LabelStore(tmp_path / "first.jsonl"), LabelStore(tmp_path / "relabel.jsonl"), 60, 1, 0)
+    return Rounds(LabelStore(tmp_path / "first.jsonl"), LabelStore(tmp_path / "relabel.jsonl"), 60, 1, 0, ())
+
+
+MODES = (FailureMode("false unanswerable", "Says Unanswerable, but a paragraph answers the question."),
+         FailureMode("wrong entity", "Names a dataset, model or number other than the one the paper states."))
 
 
 def test_every_answer_to_a_question_shows_the_same_paragraphs_in_paper_order(corpus):
@@ -141,3 +145,40 @@ def test_summary_counts_labels_in_the_sample_only(sample):
     summary = summarize(sample, labels)
     assert summary["labeled"] == 1 and summary["notes"] == []
     assert summary["by_group"] == {group(sample[0]): {"pass": 1, "fail": 0}}
+
+
+def test_before_axial_coding_no_tag_is_needed_or_accepted(rounds, items):
+    app = rounds.first_round(items)
+    app.label({"candidate_id": items[0].id, "verdict": "fail", "note": "Names BERT; the paper fine-tunes RoBERTa"})
+    with pytest.raises(BadLabel, match="unexpected tag"):
+        app.label({"candidate_id": items[1].id, "verdict": "fail", "note": "Wrong dataset", "tag": "wrong entity"})
+
+
+def test_once_modes_exist_a_fail_needs_one_and_a_pass_takes_none(rounds, items):
+    app = replace(rounds, modes=MODES).first_round(items)
+    with pytest.raises(BadLabel, match="failure modes"):
+        app.label({"candidate_id": items[0].id, "verdict": "fail", "note": "Wrong dataset"})
+    with pytest.raises(BadLabel, match="failure modes"):
+        app.label({"candidate_id": items[0].id, "verdict": "fail", "note": "Wrong dataset", "tag": "too long"})
+    with pytest.raises(BadLabel, match="unexpected tag"):
+        app.label({"candidate_id": items[0].id, "verdict": "pass", "note": "", "tag": "wrong entity"})
+    label = app.label({"candidate_id": items[0].id, "verdict": "fail", "note": "SQuAD, not SemEval",
+                       "tag": "wrong entity"})
+    assert rounds.first.latest()[items[0].id].tag == label.tag == "wrong entity"
+    assert '"definition": "Names a dataset' in app.page()
+
+
+def test_labels_saved_before_tags_existed_still_load(tmp_path, items):
+    row = {"candidate_id": items[0].id, "verdict": "fail", "note": "Says Unanswerable, but s2p0 gives 15.5",
+           "question_id": items[0].question_id, "answer": items[0].answer, "labeled_at": "2026-10-19T14:35:27+00:00"}
+    (tmp_path / "first.jsonl").write_text(json.dumps(row) + "\n")
+    assert LabelStore(tmp_path / "first.jsonl").latest()[items[0].id].tag == ""
+
+
+def test_summary_counts_fails_per_tag_and_the_untagged_ones(sample):
+    def fail(c, tag):
+        return Label(c.id, "fail", "Wrong dataset", c.question_id, c.answer, "2026-10-20", tag)
+    labels = {sample[0].id: fail(sample[0], "wrong entity"), sample[1].id: fail(sample[1], "wrong entity"),
+              sample[2].id: fail(sample[2], "")}
+    summary = summarize(sample, labels)
+    assert summary["by_tag"] == {"wrong entity": 2} and summary["untagged_fails"] == 1

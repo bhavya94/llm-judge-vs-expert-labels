@@ -22,6 +22,9 @@ class Label:
     answer: str
     """The labeled answer, so the file stands on its own."""
     labeled_at: str
+    tag: str = ""
+    """The failure mode of a Fail, from `configs/labeling.toml`. Empty for a Pass, and for every label written before
+    axial coding fixed the list."""
 
     def __post_init__(self):
         if self.verdict not in VERDICTS:
@@ -30,12 +33,20 @@ class Label:
             raise ValueError("a Fail needs a note saying what went wrong")
 
     @classmethod
-    def of(cls, item: Item, verdict: str, note: str) -> "Label":
+    def of(cls, item: Item, verdict: str, note: str, tag: str = "") -> "Label":
         return cls(item.id, verdict, note.strip(), item.question_id, item.answer,
-                   datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"))
+                   datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"), tag)
 
     def to_row(self) -> dict:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class FailureMode:
+    """One group of the open-coding notes, named during axial coding."""
+
+    name: str
+    definition: str
 
 
 class LabelStore:
