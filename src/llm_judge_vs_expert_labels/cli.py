@@ -1,10 +1,14 @@
-"""The `ljvel` command: sample the answers to label, label them, and print what is in the sample and the labels."""
+"""The `ljvel` command: sample the answers to label, label them, and score judges against the labels."""
 
 import argparse
+import tomllib
 from collections import Counter
 
 from llm_judge_vs_expert_labels.data.corpus import Corpus
 from llm_judge_vs_expert_labels.data.sample import F1_BANDS, cell, group, load
+from llm_judge_vs_expert_labels.evaluation.agreement import Agreement, bootstrap_from_config
+from llm_judge_vs_expert_labels.judges.code import CONFIG as JUDGES_CONFIG
+from llm_judge_vs_expert_labels.judges.code import CodeChecks, F1Threshold
 from llm_judge_vs_expert_labels.labeling.items import Item
 from llm_judge_vs_expert_labels.labeling.server import Rounds
 from llm_judge_vs_expert_labels.labeling.summary import summarize
@@ -61,6 +65,34 @@ def _labels(args: argparse.Namespace) -> None:
           f"fail with answer-F1 0.5 or more: {summary['fail_high_f1']}")
 
 
+def _interval(i) -> str:
+    return f"{i.estimate:.2f} [{i.low:.2f}, {i.high:.2f}]"
+
+
+def _agree(args: argparse.Namespace) -> None:
+    corpus = Corpus.load()
+    _, split = load(corpus.candidates())
+    rounds, bootstrap = Rounds.from_config(), bootstrap_from_config()
+    first, relabel = rounds.first.latest(), rounds.relabel.latest()
+    labeled = [c for c in split.dev if c.id in first]
+    judges = [CodeChecks.from_config(corpus)] + [
+        F1Threshold(t) for t in tomllib.loads(JUDGES_CONFIG.read_text())["f1"]["thresholds"]]
+    print(f"dev: {len(labeled)} of {len(split.dev)} answers labeled. Test stays unscored until the final run.")
+    for judge in judges:
+        rate = sum(judge.judge(c).passed for c in split.dev) / len(split.dev)
+        print(f"  {judge.name:<18} passes {rate:.0%} of dev")
+    if not labeled:
+        return
+    print(f"  {'judge':<18}{'n':>5}{'TPR':>20}{'TNR':>20}{'kappa':>20}")
+    human = [first[c.id].verdict == "pass" for c in labeled]
+    rows = [(j.name, Agreement.of(human, [j.judge(c).passed for c in labeled], bootstrap)) for j in judges]
+    if both := [i for i in relabel if i in first]:
+        rows.insert(0, ("self (relabel)", Agreement.of([first[i].verdict == "pass" for i in both],
+                                                       [relabel[i].verdict == "pass" for i in both], bootstrap)))
+    for name, a in rows:
+        print(f"  {name:<18}{a.n:>5}{_interval(a.tpr):>20}{_interval(a.tnr):>20}{_interval(a.kappa):>20}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="ljvel", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -72,5 +104,7 @@ def main(argv: list[str] | None = None) -> None:
     label.set_defaults(run=_label)
     commands.add_parser("labels", help="labeling progress and the Fail notes; Pass/Fail by writer once the first pass is done").set_defaults(
         run=_labels)
+    commands.add_parser("agree", help="each judge's agreement with the labels on dev, with 95% intervals").set_defaults(
+        run=_agree)
     args = parser.parse_args(argv)
     args.run(args)

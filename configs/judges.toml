@@ -1,0 +1,14 @@
+[code_checks]
+# From the reflection project, set on the QASPER train split: 10.1% of annotators' extractive and abstractive answers
+# are longer, so about 1 in 10 good answers fails this check.
+max_answer_words = 35
+
+[f1]
+# Answer-F1 thresholds to report as judges. 0.5 is a common cut; the others show how much the choice matters.
+thresholds = [0.3, 0.5, 0.7]
+
+[agreement]
+# Percentile bootstrap over the labeled answers for every interval.
+bootstrap_resamples = 2000
+confidence = 0.95
+seed = 0
