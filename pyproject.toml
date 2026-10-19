@@ -1,0 +1,23 @@
+[project]
+name = "llm-judge-vs-expert-labels"
+version = "0.1.0"
+description = "How well an automated judge reproduces one expert's Pass/Fail labels on grounded-QA answers, how few labels it needs, and whether a small trained judge beats a prompted one."
+readme = "README.md"
+authors = [{ name = "Bhavya Sharma" }]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.5.4",
+    "metrics-from-scratch @ git+https://github.com/bhavya94/metrics-from-scratch",
+]
+
+[project.scripts]
+ljvel = "llm_judge_vs_expert_labels.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
