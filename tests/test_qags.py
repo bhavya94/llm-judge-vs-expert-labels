@@ -91,3 +91,15 @@ def test_the_frozen_split_matches_a_fresh_draw():
     summaries = qags.Release.from_config().summaries()
     frozen, fresh = qags.load(summaries), qags.split_from_config(summaries)
     assert [s.id for s in frozen.test] == [s.id for s in fresh.test] and len(frozen.dev) + len(frozen.test) == 474
+
+
+@pytest.mark.skipif(not qags.Release.from_config().path("xsum").exists(), reason="run `ljvel download` first")
+def test_agree_never_scores_a_worker_against_itself(capsys):
+    from llm_judge_vs_expert_labels.cli import main
+    main(["agree"])
+    rows = [line.split() for line in capsys.readouterr().out.splitlines() if line.strip().startswith("worker ")
+            and " vs " not in line]
+    assert len(rows) == 9  # three workers in each of three tables
+    for row in rows:
+        k = int(row[1])
+        assert row[1 + k] == "-" and row.count("-") == 1
