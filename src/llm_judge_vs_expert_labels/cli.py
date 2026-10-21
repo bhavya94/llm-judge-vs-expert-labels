@@ -147,6 +147,21 @@ def _agree(args: argparse.Namespace) -> None:
             a = Agreement.of(reference, judged, bootstrap)
             print(f"  {name:<26}{a.judge_pass_rate:>7.0%}{_interval(a.tpr):>20}{_interval(a.tnr):>20}"
                   f"{_interval(a.kappa):>20}")
+        _against_one_worker(part, judges, bootstrap)
+
+
+def _against_one_worker(part: list[qags.Summary], judges: list, bootstrap) -> None:
+    """The fair comparison with the ceiling. A worker pair compares one person with one person, while the table above
+    scores judges against the majority of three, which is less noisy. Here every row is scored against one worker at
+    a time, and a worker is never scored against itself."""
+    workers = [[s.by_worker(k) for s in part] for k in range(3)]
+    rows = [(f"worker {k + 1}", workers[k], k) for k in range(3)]
+    rows += [(j.name, [j.judge(s).passed for s in part], None) for j in judges]
+    print(f"  kappa against one worker at a time {'vs worker 1':>13}{'vs worker 2':>13}{'vs worker 3':>13}{'mean':>8}")
+    for name, judged, own in rows:
+        kappas = [None if k == own else Agreement.of(workers[k], judged, bootstrap).kappa.estimate for k in range(3)]
+        mean = sum(k for k in kappas if k is not None) / sum(k is not None for k in kappas)
+        print(f"  {name:<35}" + "".join(f"{'-' if k is None else f'{k:.2f}':>13}" for k in kappas) + f"{mean:>8.2f}")
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -22,7 +22,8 @@ Every judge, from word overlap to QAGS itself to a prompted LLM, is scored again
   in `.cache/llm`, so `agree` reads them and never calls the API.
 - **Agreement** (`evaluation/`): TPR is the share of human Passes a judge passes. TNR is the share of human Fails it
   fails. Cohen's kappa is agreement beyond chance. Each comes with a 95% bootstrap interval. One worker's labels
-  against another's give the ceiling. `uv run ljvel agree` scores every judge on dev, for each dataset and for both;
+  against another's give the ceiling. A second table scores every judge against one worker at a time, as the
+  workers are scored against each other, so the two compare fairly. `uv run ljvel agree` scores every judge on dev, for each dataset and for both;
   test stays unscored until the final run.
 
 The QASPER sample and labeling page below came first. Labeling 300 answers by hand cost more time than it gave, so
