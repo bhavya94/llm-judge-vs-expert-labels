@@ -21,7 +21,9 @@ Every judge, from word overlap to QAGS itself to a prompted LLM, is scored again
   haiku` prints the worst-case cost on dev and spends nothing. `--run` judges within a hard cap. Replies are cached
   in `.cache/llm`, so `agree` reads them and never calls the API.
 - **Agreement** (`evaluation/`): TPR is the share of human Passes a judge passes. TNR is the share of human Fails it
-  fails. Cohen's kappa is agreement beyond chance. Each comes with a 95% bootstrap interval. One worker's labels
+  fails. Cohen's kappa is agreement beyond chance. Pearson's r compares a judge's score with the human score, the
+  share of a summary's sentences most workers call consistent. That is the measure the QAGS paper reports. A judge
+  with no graded score counts 1 for Pass and 0 for Fail. Each number comes with a 95% bootstrap interval. One worker's labels
   against another's give the ceiling. A second table scores every judge against one worker at a time, as the
   workers are scored against each other, so the two compare fairly. `uv run ljvel agree` scores every judge on dev, for each dataset and for both;
   test stays unscored until the final run.
