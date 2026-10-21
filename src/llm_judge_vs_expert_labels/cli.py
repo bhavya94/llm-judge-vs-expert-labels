@@ -1,16 +1,20 @@
 """The `ljvel` command: sample the answers to label, label them, and score judges against the labels."""
 
 import argparse
+import tomllib
 from collections import Counter
 
 from llm_judge_vs_expert_labels.data import qags
 from llm_judge_vs_expert_labels.data.corpus import Corpus
 from llm_judge_vs_expert_labels.data.sample import F1_BANDS, cell, group, load
 from llm_judge_vs_expert_labels.evaluation.agreement import Agreement, bootstrap_from_config
+from llm_judge_vs_expert_labels.judges.code import CONFIG as JUDGES_CONFIG
 from llm_judge_vs_expert_labels.judges.code import WordOverlap
+from llm_judge_vs_expert_labels.judges.prompted import PromptedJudge
 from llm_judge_vs_expert_labels.labeling.items import Item
 from llm_judge_vs_expert_labels.labeling.server import Rounds
 from llm_judge_vs_expert_labels.labeling.summary import summarize
+from llm_judge_vs_expert_labels.llm.client import BudgetExceeded, NotCached
 
 
 def _candidates(args: argparse.Namespace) -> None:
@@ -82,6 +86,43 @@ def _labels(args: argparse.Namespace) -> None:
           f"fail with answer-F1 0.5 or more: {summary['fail_high_f1']}")
 
 
+def _judge(args: argparse.Namespace) -> None:
+    dev = qags.load(qags.Release.from_config().summaries()).dev
+    client = None
+    if args.paid:
+        import anthropic
+        client = anthropic.Anthropic()
+    judge = PromptedJudge.from_config(args.model, client)
+    print(f"{judge.llm.model} on {len(dev)} dev summaries: at most ${judge.estimate(dev):.2f} with an empty cache; "
+          f"cap ${judge.llm.meter.cap:.2f}")
+    if not args.paid:
+        print("Nothing was spent. Add --run to judge.")
+        return
+    try:
+        passed = sum(judge.judge(s).passed for s in dev)
+    except BudgetExceeded as error:
+        raise SystemExit(f"stopped: {error}") from None
+    finally:
+        print(f"{judge.llm.calls} API calls, ${judge.llm.meter.spent:.2f} spent "
+              f"(${judge.llm.dollars_uncached():.2f} with an empty cache)")
+    print(f"passes {passed / len(dev):.0%} of dev; {judge.unreadable} unreadable replies counted as Fail")
+
+
+def _cached_judges(dev: list[qags.Summary]) -> list[PromptedJudge]:
+    """Prompted judges whose verdicts on all of dev are cached. `agree` never calls the API."""
+    judges = []
+    for model in tomllib.loads(JUDGES_CONFIG.read_text())["llm"]["models"]:
+        judge = PromptedJudge.from_config(model, client=None)
+        try:
+            for summary in dev:
+                judge.judge(summary)
+        except NotCached:
+            print(f"  {model}: not judged yet; run `ljvel judge {model} --run`")
+            continue
+        judges.append(judge)
+    return judges
+
+
 def _interval(i) -> str:
     return f"{i.estimate:.2f} [{i.low:.2f}, {i.high:.2f}]"
 
@@ -89,9 +130,10 @@ def _interval(i) -> str:
 def _agree(args: argparse.Namespace) -> None:
     dev = qags.load(qags.Release.from_config().summaries()).dev
     bootstrap = bootstrap_from_config()
-    judges = WordOverlap.from_config()
+    judges: list = WordOverlap.from_config()
     print(f"dev: {len(dev)} summaries. Pass = most workers say every sentence is consistent. "
           "Test stays unscored until the final run.")
+    judges += _cached_judges(dev)
     for dataset in ["cnndm", "xsum", None]:
         part = [s for s in dev if dataset in (None, s.dataset)]
         human = [s.consistent for s in part]
@@ -122,5 +164,9 @@ def main(argv: list[str] | None = None) -> None:
         run=_labels)
     commands.add_parser("agree", help="each judge's agreement with the QAGS human labels on dev, with 95%% intervals").set_defaults(
         run=_agree)
+    judge = commands.add_parser("judge", help="estimate the cost of a prompted judge on dev; --run judges")
+    judge.add_argument("model", help="a key under [llm.models] in configs/judges.toml")
+    judge.add_argument("--run", dest="paid", action="store_true", help="call the API, within the cap; replies are cached")
+    judge.set_defaults(run=_judge)
     args = parser.parse_args(argv)
     args.run(args)

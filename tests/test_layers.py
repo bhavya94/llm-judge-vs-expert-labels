@@ -6,8 +6,9 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parents[1] / "src" / "llm_judge_vs_expert_labels"
 BELOW = {
     "data": set(),
+    "llm": set(),
     "labeling": {"data"},
-    "judges": {"data"},
+    "judges": {"data", "llm"},
     "evaluation": set(),
 }
 
