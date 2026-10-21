@@ -1,10 +1,22 @@
 # llm-judge-vs-expert-labels
 
-How well an automated judge reproduces one expert's Pass/Fail labels on grounded-QA answers, how few labels it needs, and whether a small trained judge beats a prompted one.
+How well an automated judge reproduces human labels of factual consistency, how few labels it needs, and whether a
+small trained judge beats a prompted one. The labels are the ones released with QAGS (Wang, Cho and Lewis, 2020).
+Every judge, from word overlap to QAGS itself to a prompted LLM, is scored against them.
 
 ## Evidence
 
 ## What is here
+- **Human labels** (`data/qags.py`, `configs/qags.toml`): 474 summaries, 235 of CNN/DailyMail articles and 239 of
+  XSum articles. For every summary sentence, three crowd workers answered whether it is consistent with the
+  article. A summary passes when most workers say yes for every sentence. About half pass. The QAGS repository has
+  no license file, so `uv run ljvel download` fetches the files at a pinned commit and checks their SHA-256. Nothing
+  from them is committed. Dev holds 315 summaries and test 159, with the same mix of dataset and label. The split
+  is frozen in `data/qags_split.json` as ids only.
+
+The QASPER sample and labeling page below came first. Labeling 300 answers by hand cost more time than it gave, so
+they are parked. The page stays for a small check of one person's labels.
+
 - **Data** (`data/`, `src/llm_judge_vs_expert_labels/data/`): 680 distinct answers to 200 QASPER questions, saved by
   [reflection-agent-for-paper-qa](https://github.com/bhavya94/reflection-agent-for-paper-qa). Three writer runs gave
   first answers: Sonnet with 20 retrieved paragraphs, Haiku with 5, and Sonnet closed-book. Six reflection setups

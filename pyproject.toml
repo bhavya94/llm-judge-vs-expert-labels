@@ -1,7 +1,7 @@
 [project]
 name = "llm-judge-vs-expert-labels"
 version = "0.1.0"
-description = "How well an automated judge reproduces one expert's Pass/Fail labels on grounded-QA answers, how few labels it needs, and whether a small trained judge beats a prompted one."
+description = "How well an automated judge reproduces human labels of factual consistency (the QAGS release), how few labels it needs, and whether a small trained judge beats a prompted one."
 readme = "README.md"
 authors = [{ name = "Bhavya Sharma" }]
 requires-python = ">=3.12"
