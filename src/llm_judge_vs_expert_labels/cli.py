@@ -11,6 +11,7 @@ from llm_judge_vs_expert_labels.evaluation.agreement import Agreement, bootstrap
 from llm_judge_vs_expert_labels.judges.code import CONFIG as JUDGES_CONFIG
 from llm_judge_vs_expert_labels.judges.code import WordOverlap
 from llm_judge_vs_expert_labels.judges.prompted import PromptedJudge
+from llm_judge_vs_expert_labels.judges.qa_based import QagsJudge
 from llm_judge_vs_expert_labels.labeling.items import Item
 from llm_judge_vs_expert_labels.labeling.server import Rounds
 from llm_judge_vs_expert_labels.labeling.summary import summarize
@@ -92,8 +93,8 @@ def _judge(args: argparse.Namespace) -> None:
     if args.paid:
         import anthropic
         client = anthropic.Anthropic()
-    judge = PromptedJudge.from_config(args.model, client)
-    print(f"{judge.llm.model} on {len(dev)} dev summaries: at most ${judge.estimate(dev):.2f} with an empty cache; "
+    judge = QagsJudge.from_config(client)[0] if args.model == "qags" else PromptedJudge.from_config(args.model, client)
+    print(f"{judge.name}: {judge.llm.model} on {len(dev)} dev summaries: at most ${judge.estimate(dev):.2f} with an empty cache; "
           f"cap ${judge.llm.meter.cap:.2f}")
     if not args.paid:
         print("Nothing was spent. Add --run to judge.")
@@ -105,21 +106,24 @@ def _judge(args: argparse.Namespace) -> None:
     finally:
         print(f"{judge.llm.calls} API calls, ${judge.llm.meter.spent:.2f} spent "
               f"(${judge.llm.dollars_uncached():.2f} with an empty cache)")
-    print(f"passes {passed / len(dev):.0%} of dev; {judge.unreadable} unreadable replies counted as Fail")
+    print(f"passes {passed / len(dev):.0%} of dev; {judge.unreadable} unreadable replies counted as Fail"
+          + (f"; {judge.no_questions} with no usable question" if isinstance(judge, QagsJudge) else ""))
 
 
-def _cached_judges(dev: list[qags.Summary]) -> list[PromptedJudge]:
-    """Prompted judges whose verdicts on all of dev are cached. `agree` never calls the API."""
+def _cached_judges(dev: list[qags.Summary]) -> list:
+    """LLM judges whose verdicts on all of dev are cached. `agree` never calls the API."""
+    candidates = [(model, [PromptedJudge.from_config(model, client=None)])
+                  for model in tomllib.loads(JUDGES_CONFIG.read_text())["llm"]["models"]]
+    candidates.append(("qags", QagsJudge.from_config(client=None)))
     judges = []
-    for model in tomllib.loads(JUDGES_CONFIG.read_text())["llm"]["models"]:
-        judge = PromptedJudge.from_config(model, client=None)
+    for key, same_cache in candidates:
         try:
             for summary in dev:
-                judge.judge(summary)
+                same_cache[0].judge(summary)
         except NotCached:
-            print(f"  {model}: not judged yet; run `ljvel judge {model} --run`")
+            print(f"  {key}: not judged yet; run `ljvel judge {key} --run`")
             continue
-        judges.append(judge)
+        judges += same_cache
     return judges
 
 
@@ -185,7 +189,7 @@ def main(argv: list[str] | None = None) -> None:
     commands.add_parser("agree", help="each judge's agreement with the QAGS human labels on dev, with 95%% intervals").set_defaults(
         run=_agree)
     judge = commands.add_parser("judge", help="estimate the cost of a prompted judge on dev; --run judges")
-    judge.add_argument("model", help="a key under [llm.models] in configs/judges.toml")
+    judge.add_argument("model", help="a key under [llm.models] in configs/judges.toml, or qags")
     judge.add_argument("--run", dest="paid", action="store_true", help="call the API, within the cap; replies are cached")
     judge.set_defaults(run=_judge)
     args = parser.parse_args(argv)
