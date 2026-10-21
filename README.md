@@ -20,6 +20,10 @@ Every judge, from word overlap to QAGS itself to a prompted LLM, is scored again
   one sentence per line, as the workers did. Each replies with a reason, then Pass or Fail. `uv run ljvel judge
   haiku` prints the worst-case cost on dev and spends nothing. `--run` judges within a hard cap. Replies are cached
   in `.cache/llm`, so `agree` reads them and never calls the API.
+- **QAGS** (`judges/qa_based.py`): the method of Wang, Cho and Lewis (2020), with Haiku writing and answering the
+  questions. It asks up to 10 questions about the summary. Then it answers them from the summary and, in a separate
+  call, from the article. The score is the mean token F1 between the two answers. `uv run ljvel judge qags` estimates
+  the cost, and `--run` judges.
 - **Agreement** (`evaluation/`): TPR is the share of human Passes a judge passes. TNR is the share of human Fails it
   fails. Cohen's kappa is agreement beyond chance. Pearson's r compares a judge's score with the human score, the
   share of a summary's sentences most workers call consistent. That is the measure the QAGS paper reports. A judge

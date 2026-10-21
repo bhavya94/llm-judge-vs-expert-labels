@@ -33,5 +33,6 @@ output_price = 15.0
 model = "haiku"
 max_questions = 10
 max_tokens = 600
-# Pass when the mean answer F1 reaches the threshold. Placeholders until the dev scores are in.
-thresholds = [0.5, 0.7]
+# Pass when the mean answer F1 reaches the threshold. Chosen after reading the dev scores: 0.6 gives XSum its best
+# kappa (0.29) and 0.8 gives CNN/DM its best (0.26). Test will show how much that choice flatters dev.
+thresholds = [0.6, 0.8]
