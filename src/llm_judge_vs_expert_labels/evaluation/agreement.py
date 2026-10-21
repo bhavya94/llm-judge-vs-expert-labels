@@ -1,9 +1,8 @@
-"""How well a judge's verdicts match the person's labels on the same answers, each number with a bootstrap interval.
+"""How well a judge's verdicts match human labels on the same items, each number with a bootstrap interval.
 
-TPR is the share of the person's Passes the judge passes; TNR is the share of their Fails it fails. Cohen's kappa is
-agreement beyond what the two pass rates would give by chance. The same measure, run on the person's first labels
-against their blind relabels, gives the ceiling: no judge should be expected to agree with them better than they
-agree with themselves.
+TPR is the share of human Passes the judge passes; TNR is the share of human Fails it fails. Cohen's kappa is
+agreement beyond what the two pass rates would give by chance. The same measure, run on one crowd worker's labels
+against another's, gives the ceiling: how far two people agree.
 """
 
 import tomllib

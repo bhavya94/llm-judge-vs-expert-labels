@@ -3,50 +3,41 @@ import math
 import pytest
 from metrics_from_scratch.stats.bootstrap import Bootstrap
 
-from llm_judge_vs_expert_labels.data.corpus import Corpus
-from llm_judge_vs_expert_labels.data.records import Candidate, Question, Reference
+from llm_judge_vs_expert_labels.data.qags import Sentence, Summary
 from llm_judge_vs_expert_labels.evaluation.agreement import Agreement
-from llm_judge_vs_expert_labels.judges.code import CodeChecks, F1Threshold
+from llm_judge_vs_expert_labels.judges.code import WordOverlap
 
-ANSWERED = Question("q-datasets", "1705.01265", "Feature set augmentation", "Which datasets do they evaluate on?",
-                    (Reference("SemEval 2016 Task 4", "extractive", ("s3p1",)),))
-UNANSWERED = Question("q-baseline", "1705.01265", "Feature set augmentation", "What baseline do they compare to?",
-                      (Reference("Unanswerable", "none", ()), Reference("Unanswerable", "none", ())))
+ARTICLE = "Police said three armed men took a five-figure sum from the van in Glasgow on Monday."
 BOOTSTRAP = Bootstrap(n_resamples=500, seed=0)
 
 
-@pytest.fixture
-def checks() -> CodeChecks:
-    return CodeChecks(Corpus([ANSWERED, UNANSWERED], {}, []), max_words=35)
+def summary(*sentences: tuple[str, tuple[bool, ...]], article: str = ARTICLE) -> Summary:
+    return Summary("xsum", article, tuple(Sentence(text, votes) for text, votes in sentences))
 
 
-def answer(question: Question, text: str, cited: tuple[str, ...] = ("s3p1",), f1: float = 0.0) -> Candidate:
-    return Candidate(question.id, text, cited, cited, ("sonnet-k20",), False, f1)
+def test_a_summary_made_of_article_words_passes_the_strictest_overlap():
+    assert WordOverlap(1.0).judge(summary(("Three armed men took a sum from the van.", (True,) * 3))).passed
 
 
-def test_a_short_cited_answer_passes_the_code_checks(checks):
-    assert checks.judge(answer(ANSWERED, "SemEval 2016 Task 4")).passed
+def test_a_new_word_fails_the_strict_cut_and_is_named_in_the_reason():
+    verdict = WordOverlap(1.0).judge(summary(("Three armed men took a sum in Edinburgh.", (True,) * 3)))
+    assert not verdict.passed and "edinburgh" in verdict.reason
 
 
-@pytest.mark.parametrize("candidate, reason", [
-    (answer(ANSWERED, "Unanswerable", cited=()), "every reference answers"),
-    (answer(UNANSWERED, "A bag-of-words SVM"), "every reference says the paper doesn't"),
-    (answer(ANSWERED, "SemEval 2016 Task 4", cited=()), "cites no paragraph"),
-    (answer(ANSWERED, " ".join(["They evaluate on the SemEval benchmark"] * 6)), "36 words"),
-])
-def test_each_code_check_fails_with_its_reason(checks, candidate, reason):
-    verdict = checks.judge(candidate)
-    assert not verdict.passed and reason in verdict.reason
+def test_the_overlap_threshold_is_inclusive():
+    # 9 of 10 words are in the article.
+    text = "Three armed men took a sum from the van Tuesday"
+    assert WordOverlap(0.9).judge(summary((text, (True,) * 3))).passed
+    assert not WordOverlap(0.91).judge(summary((text, (True,) * 3))).passed
 
 
-def test_unanswerable_passes_when_every_reference_agrees(checks):
-    assert checks.judge(answer(UNANSWERED, "Unanswerable", cited=())).passed
+def test_overlap_ignores_case_and_punctuation():
+    assert WordOverlap(1.0).judge(summary(("POLICE: three armed men -- Glasgow!", (True,) * 3))).passed
 
 
-def test_the_f1_threshold_is_inclusive():
-    judge = F1Threshold(0.5)
-    assert judge.judge(answer(ANSWERED, "SemEval", f1=0.5)).passed
-    assert not judge.judge(answer(ANSWERED, "SemEval", f1=0.49)).passed
+def test_one_workers_label_needs_a_yes_on_every_sentence():
+    s = summary(("First.", (True, True, False)), ("Second.", (True, False, True)))
+    assert s.consistent and s.by_worker(0) and not s.by_worker(1) and not s.by_worker(2)
 
 
 def test_agreement_on_a_worked_example():
