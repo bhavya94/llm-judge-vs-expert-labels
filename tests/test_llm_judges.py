@@ -53,9 +53,16 @@ def test_parse_finds_the_verdict_in_surrounding_text(reply, passed):
 
 @pytest.mark.parametrize("reply", ["Pass.", '{"verdict": "maybe"}', '{"verdict": "pass"', "[1, 2]"])
 def test_an_unreadable_reply_counts_as_fail_and_is_counted(tmp_path, reply):
-    judge = _judge(FakeClient(reply), tmp_path)
+    judge = _judge(FakeClient(reply, reply), tmp_path)
     verdict = judge.judge(ANSWER)
     assert not verdict.passed and "unreadable" in verdict.reason and judge.unreadable == 1
+
+
+def test_a_cut_off_reply_is_asked_again_once_with_a_higher_limit(tmp_path):
+    client = FakeClient('{"reason": "Sentence 2 adds a date the', PASS)
+    judge = _judge(client, tmp_path)
+    assert judge.judge(ANSWER).passed and judge.unreadable == 0
+    assert [r["max_tokens"] for r in client.requests] == [judge.llm.max_tokens, judge.retry_max_tokens]
 
 
 def test_the_cache_makes_a_rerun_free_and_offline(tmp_path):
