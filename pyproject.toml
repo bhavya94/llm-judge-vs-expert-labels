@@ -6,6 +6,7 @@ readme = "README.md"
 authors = [{ name = "Bhavya Sharma" }]
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=1.15.0",
     "numpy>=2.5.4",
     "metrics-from-scratch @ git+https://github.com/bhavya94/metrics-from-scratch",
 ]

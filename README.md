@@ -16,6 +16,10 @@ Every judge, from word overlap to QAGS itself to a prompted LLM, is scored again
 - **Judges** (`judges/`, `configs/judges.toml`): every judge takes one summary and returns Pass or Fail with a
   reason. The first judges are code, free and instant. They pass a summary when enough of its words appear in the
   article, at 90% and at 100%.
+- **Prompted judges** (`judges/prompted.py`, `llm/`): Haiku 4.5 and Sonnet 5.5 read the article and the summary,
+  one sentence per line, as the workers did. Each replies with a reason, then Pass or Fail. `uv run ljvel judge
+  haiku` prints the worst-case cost on dev and spends nothing. `--run` judges within a hard cap. Replies are cached
+  in `.cache/llm`, so `agree` reads them and never calls the API.
 - **Agreement** (`evaluation/`): TPR is the share of human Passes a judge passes. TNR is the share of human Fails it
   fails. Cohen's kappa is agreement beyond chance. Each comes with a 95% bootstrap interval. One worker's labels
   against another's give the ceiling. `uv run ljvel agree` scores every judge on dev, for each dataset and for both;
@@ -57,6 +61,7 @@ uv run ljvel --help
 `uv run python scripts/build_views.py`.
 
 ## Layers
-A package never imports a package listed after it, and only `cli.py` prints. `tests/test_layers.py` enforces both.
+A package never imports a package listed after it, and only `cli.py` prints. `llm/`, the cached and capped model
+client, imports nothing from this project. `tests/test_layers.py` enforces both.
 
 ## Limits
