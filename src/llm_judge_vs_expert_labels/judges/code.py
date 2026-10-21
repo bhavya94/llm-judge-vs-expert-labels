@@ -41,5 +41,5 @@ class WordOverlap:
         missing = [w for w in summary_words if w not in article]
         share = 1 - len(missing) / len(summary_words) if summary_words else 1.0
         if share >= self.threshold:
-            return Verdict(True, "")
-        return Verdict(False, f"{share:.0%} of words in the article; missing: {', '.join(missing[:5])}")
+            return Verdict(True, "", share)
+        return Verdict(False, f"{share:.0%} of words in the article; missing: {', '.join(missing[:5])}", share)

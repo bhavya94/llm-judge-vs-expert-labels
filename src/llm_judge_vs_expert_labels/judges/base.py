@@ -11,6 +11,8 @@ class Verdict:
     passed: bool
     reason: str
     """Why, in words: empty for a plain Pass."""
+    score: float | None = None
+    """A graded score, higher for more consistent, when the judge has one. Correlation uses it in place of 0 or 1."""
 
 
 class Judge(Protocol):

@@ -47,6 +47,18 @@ class Agreement:
                    bootstrap.interval(_tnr, h, j), bootstrap.interval(_kappa, h, j))
 
 
+def _pearson(x: np.ndarray, y: np.ndarray) -> float:
+    if x.std() == 0 or y.std() == 0:
+        return float("nan")
+    return float(np.corrcoef(x, y)[0, 1])
+
+
+def correlation(human: list[float], scores: list[float], bootstrap: Bootstrap) -> Interval:
+    """Pearson's r between human scores and a judge's scores on the same summaries, as the QAGS paper reports it.
+    A judge with no graded score passes 1 for Pass and 0 for Fail."""
+    return bootstrap.interval(_pearson, np.array(human, dtype=float), np.array(scores, dtype=float))
+
+
 def bootstrap_from_config(path: Path = CONFIG) -> Bootstrap:
     config = tomllib.loads(path.read_text())["agreement"]
     return Bootstrap(config["bootstrap_resamples"], config["confidence"], config["seed"])

@@ -7,7 +7,7 @@ from collections import Counter
 from llm_judge_vs_expert_labels.data import qags
 from llm_judge_vs_expert_labels.data.corpus import Corpus
 from llm_judge_vs_expert_labels.data.sample import F1_BANDS, cell, group, load
-from llm_judge_vs_expert_labels.evaluation.agreement import Agreement, bootstrap_from_config
+from llm_judge_vs_expert_labels.evaluation.agreement import Agreement, bootstrap_from_config, correlation
 from llm_judge_vs_expert_labels.judges.code import CONFIG as JUDGES_CONFIG
 from llm_judge_vs_expert_labels.judges.code import WordOverlap
 from llm_judge_vs_expert_labels.judges.prompted import PromptedJudge
@@ -138,15 +138,20 @@ def _agree(args: argparse.Namespace) -> None:
         part = [s for s in dev if dataset in (None, s.dataset)]
         human = [s.consistent for s in part]
         print(f"\n{dataset or 'both'}: {len(part)} summaries, {sum(human) / len(part):.0%} pass")
-        print(f"  {'judge':<26}{'passes':>7}{'TPR':>20}{'TNR':>20}{'kappa':>20}")
-        # The ceiling: one crowd worker's label against another's, for each pair of answer positions.
-        rows = [(f"worker {a + 1} vs worker {b + 1}", [s.by_worker(a) for s in part], [s.by_worker(b) for s in part])
-                for a, b in [(0, 1), (0, 2), (1, 2)]]
-        rows += [(j.name, human, [j.judge(s).passed for s in part]) for j in judges]
-        for name, reference, judged in rows:
+        print(f"  {'judge':<26}{'passes':>7}{'TPR':>20}{'TNR':>20}{'kappa':>20}{'r with human score':>22}")
+        # The ceiling: one crowd worker's label against another's, for each pair of answer positions. r is for judges
+        # only: a worker's own votes are part of the human score.
+        rows = [(f"worker {a + 1} vs worker {b + 1}", [s.by_worker(a) for s in part], [s.by_worker(b) for s in part],
+                 None) for a, b in [(0, 1), (0, 2), (1, 2)]]
+        for j in judges:
+            verdicts = [j.judge(s) for s in part]
+            scores = [float(v.passed) if v.score is None else v.score for v in verdicts]
+            rows.append((j.name, human, [v.passed for v in verdicts], scores))
+        for name, reference, judged, scores in rows:
             a = Agreement.of(reference, judged, bootstrap)
+            r = "-" if scores is None else _interval(correlation([s.human_score for s in part], scores, bootstrap))
             print(f"  {name:<26}{a.judge_pass_rate:>7.0%}{_interval(a.tpr):>20}{_interval(a.tnr):>20}"
-                  f"{_interval(a.kappa):>20}")
+                  f"{_interval(a.kappa):>20}{r:>22}")
         _against_one_worker(part, judges, bootstrap)
 
 

@@ -52,6 +52,11 @@ class Summary:
         """The label every judge is scored against: the majority says yes for every sentence."""
         return all(s.consistent for s in self.sentences)
 
+    @property
+    def human_score(self) -> float:
+        """The share of sentences most workers call consistent: the human score the QAGS paper correlates with."""
+        return sum(s.consistent for s in self.sentences) / len(self.sentences)
+
     def by_worker(self, position: int) -> bool:
         """One worker's label: yes for every sentence. Workers differ from sentence to sentence, so position k means
         "whoever answered k-th", which is how one crowd worker compares with another."""
