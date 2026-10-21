@@ -32,11 +32,14 @@ def render(summary: Summary) -> str:
 
 
 class PromptedJudge:
-    def __init__(self, name: str, llm: CachedLLM):
+    def __init__(self, name: str, llm: CachedLLM, retry_max_tokens: int = 1000):
         self.name = name
         self.llm = llm
+        self.retry_max_tokens = retry_max_tokens
+        """A reply with no readable verdict, usually cut off at the token limit, is asked again once with this limit."""
         self.unreadable = 0
-        """Replies with no readable verdict. Each counts as a Fail, so a high count drags TPR down."""
+        """Replies with no readable verdict even after the retry. Each counts as a Fail, so a high count drags TPR
+        down."""
 
     @classmethod
     def from_config(cls, model: str, client: Any, path: Path = CONFIG) -> "PromptedJudge":
@@ -44,7 +47,8 @@ class PromptedJudge:
         config = tomllib.loads(path.read_text())["llm"]
         settings = config["models"][model]
         meter = Meter(settings["input_price"], settings["output_price"], config["cap"])
-        return cls(model, CachedLLM(client, settings["id"], meter, cache=CACHE, max_tokens=config["max_tokens"]))
+        llm = CachedLLM(client, settings["id"], meter, cache=CACHE, max_tokens=config["max_tokens"])
+        return cls(model, llm, config["retry_max_tokens"])
 
     def estimate(self, summaries: list[Summary]) -> float:
         """Worst-case dollars to judge `summaries` with an empty cache: 1 token per 3 characters of input, and every
@@ -54,7 +58,10 @@ class PromptedJudge:
                    for s in summaries) / 1e6
 
     def judge(self, summary: Summary) -> Verdict:
-        reply = self.llm.ask(SYSTEM, [{"role": "user", "content": render(summary)}])
+        messages = [{"role": "user", "content": render(summary)}]
+        reply = self.llm.ask(SYSTEM, messages)
+        if parse(reply) is None:
+            reply = self.llm.ask(SYSTEM, messages, max_tokens=self.retry_max_tokens)
         if (verdict := parse(reply)) is None:
             self.unreadable += 1
             return Verdict(False, f"unreadable reply: {reply[:80]!r}")

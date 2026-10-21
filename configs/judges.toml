@@ -14,6 +14,8 @@ seed = 0
 # free. The cap is per run and refuses any call whose worst case would pass it. The project's total cap is $25.
 cap = 5.0
 max_tokens = 300
+# A reply with no readable verdict is asked again once with this limit. On dev, Sonnet cut 11 of 315 replies off at 300.
+retry_max_tokens = 1000
 
 # Prices in dollars per million tokens. Check them against the current price list before a paid run.
 [llm.models.haiku]

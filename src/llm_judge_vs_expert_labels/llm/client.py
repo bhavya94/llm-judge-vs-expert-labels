@@ -57,8 +57,10 @@ class CachedLLM:
     # rerun. Seconds are None for replies cached before latency was recorded.
     replies: list[dict] = field(default_factory=list, init=False)
 
-    def ask(self, system: str, messages: list[dict]) -> str:
-        request = {"model": self.model, "system": system, "messages": messages, "max_tokens": self.max_tokens}
+    def ask(self, system: str, messages: list[dict], max_tokens: int | None = None) -> str:
+        """`max_tokens` overrides the default for this call, for example to retry a reply that was cut off."""
+        max_tokens = max_tokens or self.max_tokens
+        request = {"model": self.model, "system": system, "messages": messages, "max_tokens": max_tokens}
         key = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
         path = self.cache / f"{key}.json"
         if path.exists():
@@ -67,7 +69,7 @@ class CachedLLM:
             return cached["text"]
         if self.client is None:
             raise NotCached(f"{self.model}: no cached reply for this request")
-        self.meter.check(self.max_tokens, input_tokens_estimate=len(json.dumps(request)) // 3)
+        self.meter.check(max_tokens, input_tokens_estimate=len(json.dumps(request)) // 3)
         start = time.perf_counter()
         response = self.client.messages.create(**request)
         seconds = time.perf_counter() - start
