@@ -1,0 +1,14 @@
+# The human labels released with QAGS (Wang, Cho and Lewis, 2020), pinned to one commit of the authors' repository.
+# `ljvel download` fetches them into data/qags/ and checks each file against its SHA-256.
+[release]
+url = "https://raw.githubusercontent.com/W4ngatang/qags"
+commit = "47798e9b63344e2d3fb4df2def6edc18e9402d30"
+
+[release.sha256]
+cnndm = "5a6e20201f2c5d5d2489865137987c5d68d04c5b4e84662f99bb03862bb3a575"
+xsum = "1fb9af32ba64b0df54b26e12456b0b0324a519a85348c1f7b268899ad6269a15"
+
+[split]
+# A third of each (dataset, label) group goes to test, which is scored once, at the end.
+test_share = 0.333
+seed = 0

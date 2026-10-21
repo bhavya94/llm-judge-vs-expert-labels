@@ -4,6 +4,7 @@ import argparse
 import tomllib
 from collections import Counter
 
+from llm_judge_vs_expert_labels.data import qags
 from llm_judge_vs_expert_labels.data.corpus import Corpus
 from llm_judge_vs_expert_labels.data.sample import F1_BANDS, cell, group, load
 from llm_judge_vs_expert_labels.evaluation.agreement import Agreement, bootstrap_from_config
@@ -30,6 +31,24 @@ def _candidates(args: argparse.Namespace) -> None:
                   + f"{sum(counts[name, key] for key in columns):>8}")
     for name, part in [("dev", split.dev), ("test", split.test)]:
         print(f"{name}: {len(part)} answers to {len({c.question_id for c in part})} questions")
+
+
+def _download(args: argparse.Namespace) -> None:
+    release = qags.Release.from_config()
+    try:
+        paths = release.download()
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
+    print(f"QAGS human labels at commit {release.base_url.split('/')[-2][:7]}: "
+          + ", ".join(p.name for p in paths) + " match their SHA-256")
+    split = qags.load(release.summaries())
+    print(f"  {'':<6}{'dataset':<8}{'summaries':>10}{'consistent':>12}{'sentences':>11}{'unanimous':>11}")
+    for name, part in [("dev", split.dev), ("test", split.test)]:
+        for dataset in release.files:
+            rows = [s for s in part if s.dataset == dataset]
+            sentences = [t for s in rows for t in s.sentences]
+            print(f"  {name:<6}{dataset:<8}{len(rows):>10}{sum(s.consistent for s in rows):>12}{len(sentences):>11}"
+                  f"{sum(len(set(t.votes)) == 1 for t in sentences) / len(sentences):>11.0%}")
 
 
 def _label(args: argparse.Namespace) -> None:
@@ -96,6 +115,8 @@ def _agree(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="ljvel", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("download", help="fetch the QAGS human labels at the pinned commit; print the split").set_defaults(
+        run=_download)
     commands.add_parser("candidates", help="the sample to label, by writer and kind of answer").set_defaults(
         run=_candidates)
     label = commands.add_parser("label", help="serve the labeling page on localhost")
