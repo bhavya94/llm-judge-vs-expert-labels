@@ -6,4 +6,8 @@ relabel = "../labels/relabel.jsonl"
 relabel_size = 60
 # Differs from the sample's seed, so the relabel order is not the first pass's order.
 relabel_seed = 1
+# Reviews of the dev summaries where a judge differs from the human majority label, one file per judge. The review
+# page has its own port, so it can run beside the labeling page.
+review = "../labels/review-{judge}.jsonl"
+review_port = 8766
 port = 8765

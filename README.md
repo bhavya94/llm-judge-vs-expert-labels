@@ -27,6 +27,11 @@ Every judge, from word overlap to QAGS itself to a prompted LLM, is scored again
   against another's give the ceiling. A second table scores every judge against one worker at a time, as the
   workers are scored against each other, so the two compare fairly. `uv run ljvel agree` scores every judge on dev, for each dataset and for both;
   test stays unscored until the final run.
+- **Review** (`review/`): `uv run ljvel review --judge sonnet` serves a page of the dev summaries where the judge's
+  Pass or Fail differs from the human label. It reads verdicts from the cache only and skips a summary with none.
+  The page shows the article, each sentence with its three votes, both labels and the judge's reason. The reviewer
+  says who was right (human, judge or unclear) and writes why. Reviews go to `labels/review-<judge>.jsonl`, and a
+  reopened page resumes after the last one saved. `--summary` prints who was right and the notes, by dataset.
 
 The QASPER sample and labeling page below came first. Labeling 300 answers by hand cost more time than it gave, so
 they are parked. The page stays for a small check of one person's labels.
@@ -65,6 +70,7 @@ uv run ljvel --help
 
 ## Layers
 A package never imports a package listed after it, and only `cli.py` prints. `llm/`, the cached and capped model
-client, imports nothing from this project. `tests/test_layers.py` enforces both.
+client, imports nothing from this project. `review/` is the top package: it imports the judges and reuses the
+labeling server. `tests/test_layers.py` enforces both.
 
 ## Limits

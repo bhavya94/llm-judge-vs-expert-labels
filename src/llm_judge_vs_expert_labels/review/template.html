@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disagreement Review</title>
+<style>
+  :root { color-scheme: light; --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --ring:rgba(11,11,11,.10); --band:rgba(11,11,11,.06); --accent:#2a78d6; --pass:#1baf7a; --fail:#d03b3b; }
+  @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --ink:#f0efec;
+    --ink-2:#c3c2b7; --ring:rgba(255,255,255,.10); --band:rgba(255,255,255,.07); --accent:#3987e5; --pass:#199e70; --fail:#e05252; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 64px; display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  header { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+  h1 { font-size: 20px; margin: 0; } .muted { color: var(--muted); font-size: 13px; } .panel { position: sticky; top: 12px; align-self: start; }
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 4px; }
+  .article { max-height: 50vh; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; color: var(--ink-2); }
+  .sentence { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; margin: 6px 0; border-left: 3px solid var(--pass); }
+  .sentence.no { border-left-color: var(--fail); background: var(--band); }
+  .votes { white-space: nowrap; font-family: ui-monospace, Menlo, monospace; letter-spacing: .2em; }
+  .yes, .pass { color: var(--pass); } .no-vote, .fail { color: var(--fail); } .verdict { font-weight: 600; margin: 0 0 10px; }
+  .choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0 12px; }
+  button { font: inherit; border-radius: 8px; border: 1px solid var(--ring); background: var(--surface); color: var(--ink); padding: 8px 10px; cursor: pointer; }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .choice.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  textarea { width: 100%; min-height: 110px; font: inherit; font-size: 14px; border-radius: 8px; border: 1px solid var(--ring); background: var(--page); color: var(--ink); padding: 8px; resize: vertical; }
+  .primary { width: 100%; margin-top: 10px; background: var(--ink); color: var(--surface); }
+  .status { font-size: 13px; min-height: 20px; margin-top: 8px; color: var(--ink-2); } .status.error { color: var(--fail); }
+  kbd { font-family: ui-monospace, Menlo, monospace; font-size: 12px; border: 1px solid var(--ring); border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>Judge and humans disagree: who was right?</h1><span class="muted" id="progress"></span></header>
+  <section id="item">
+    <div class="card"><p class="label" id="dataset"></p><div class="article" id="article"></div></div>
+    <div class="card"><p class="label">Summary, with each worker's vote: ✓ consistent, ✗ not</p><div id="sentences"></div></div>
+  </section>
+  <aside class="panel" id="panel">
+    <div class="card">
+      <p class="label">Human majority</p><p class="verdict" id="human"></p>
+      <p class="label">Judge</p><p class="verdict" id="judge"></p><p id="reason"></p>
+    </div>
+    <div class="card">
+      <p class="label">Who was right?</p>
+      <div class="choices">
+        <button class="choice" data-r="human">Human <kbd>h</kbd></button>
+        <button class="choice" data-r="judge">Judge <kbd>j</kbd></button>
+        <button class="choice" data-r="unclear">Unclear <kbd>u</kbd></button>
+      </div>
+      <p class="label"><label for="note">Why? A few words become a failure mode.</label></p>
+      <textarea id="note" placeholder="e.g. the judge missed that the article never gives the day"></textarea>
+      <button class="primary" id="next">Save and next <kbd>⌘↵</kbd></button>
+      <div class="status" id="status" aria-live="polite"></div>
+    </div>
+  </aside>
+</main>
+<script>
+const DATA = __DATA__;
+const items = DATA.items;
+let i = 0, right = null, saving = false;
+const $ = id => document.getElementById(id);
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function verdict(id, v) { $(id).textContent = v === "pass" ? "Pass" : "Fail"; $(id).className = "verdict " + v; }
+function choose(r) { right = r; document.querySelectorAll(".choice").forEach(b => b.classList.toggle("on", b.dataset.r === r)); }
+function status(text, error) { $("status").textContent = text; $("status").className = "status" + (error ? " error" : ""); }
+
+function show() {
+  choose(null); status("");
+  if (i >= items.length) {
+    $("progress").textContent = DATA.total ? `All ${DATA.total} reviewed.` : "Nothing to review.";
+    return $("item").hidden = $("panel").hidden = true;
+  }
+  const t = items[i];
+  $("progress").textContent = `${DATA.done + i + 1} of ${DATA.total}`;
+  $("dataset").textContent = t.dataset + " article";
+  $("article").textContent = t.article; $("article").scrollTop = 0;
+  $("sentences").replaceChildren(...t.sentences.map(s => {
+    const marks = el("span", "votes"), yes = s.votes.filter(Boolean).length;
+    s.votes.forEach((v, k) => { const m = el("span", v ? "yes" : "no-vote", v ? "✓" : "✗"); m.title = `worker ${k + 1}: ${v ? "yes" : "no"}`; marks.append(m); });
+    const d = el("div", 2 * yes > s.votes.length ? "sentence" : "sentence no"); d.append(el("span", null, s.text), marks); return d;
+  }));
+  verdict("human", t.human_label); verdict("judge", t.judge_verdict);
+  $("reason").textContent = t.reason || "(no reason given)"; $("note").value = "";
+  window.scrollTo(0, 0);
+}
+
+async function next() {
+  if (i >= items.length || saving) return;  // a second ⌘↵ during a save would skip a summary
+  if (!right) return status("Choose who was right first.");
+  if (!$("note").value.trim()) return status("Write a note: the notes become failure modes.");
+  saving = true;
+  try {
+    const r = await fetch("/label", {method: "POST", headers: {"Content-Type": "application/json"},
+                                     body: JSON.stringify({summary_id: items[i].id, right, note: $("note").value})});
+    if (!r.ok) throw new Error(await r.text());
+    $("note").blur();  // so the next h, j or u picks who was right instead of typing into the next note
+    i += 1; show();
+  } catch (e) { status("Not saved: " + e.message, true); } finally { saving = false; }
+}
+
+document.querySelectorAll(".choice").forEach(b => b.onclick = () => { choose(b.dataset.r); $("note").focus(); });
+$("next").onclick = next;
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); return next(); }
+  if (e.target.tagName === "TEXTAREA" || e.metaKey || e.ctrlKey || e.altKey) return;
+  const r = {h: "human", j: "judge", u: "unclear"}[e.key];
+  if (r) { e.preventDefault(); choose(r); $("note").focus(); }  // preventDefault keeps the key out of the note
+});
+show();
+</script>
+</body>
+</html>

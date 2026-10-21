@@ -1,6 +1,7 @@
 """The `ljvel` command: sample the answers to label, label them, and score judges against the labels."""
 
 import argparse
+import os
 import tomllib
 from collections import Counter
 
@@ -12,9 +13,12 @@ from llm_judge_vs_expert_labels.judges.code import CONFIG as JUDGES_CONFIG
 from llm_judge_vs_expert_labels.judges.code import WordOverlap
 from llm_judge_vs_expert_labels.judges.prompted import PromptedJudge
 from llm_judge_vs_expert_labels.labeling.items import Item
+from llm_judge_vs_expert_labels.labeling.server import CONFIG as LABELING_CONFIG
 from llm_judge_vs_expert_labels.labeling.server import Rounds
 from llm_judge_vs_expert_labels.labeling.summary import summarize
 from llm_judge_vs_expert_labels.llm.client import BudgetExceeded, NotCached
+from llm_judge_vs_expert_labels.review.disagreements import (ReviewServer, ReviewStore, find_disagreements,
+                                                             summarize_reviews)
 
 
 def _candidates(args: argparse.Namespace) -> None:
@@ -169,6 +173,29 @@ def _against_one_worker(part: list[qags.Summary], judges: list, bootstrap) -> No
         print(f"  {name:<35}" + "".join(f"{'-' if k is None else f'{k:.2f}':>13}" for k in kappas) + f"{mean:>8.2f}")
 
 
+def _review(args: argparse.Namespace) -> None:
+    store = ReviewStore.from_config(args.judge)
+    path = os.path.relpath(store.path)
+    if args.summary:
+        by_dataset = summarize_reviews(r for r in store.latest().values() if args.dataset in ("both", r.dataset))
+        print(f"{sum(len(g['notes']) for g in by_dataset.values())} summaries reviewed in {path}")
+        for dataset, group in by_dataset.items():
+            print(f"{dataset}, who was right: " + ", ".join(f"{right} {n}" for right, n in group["counts"].items()))
+            for right, note in group["notes"]:
+                print(f"  {right}: {note}")
+        return
+    dev = [s for s in qags.load(qags.Release.from_config().summaries()).dev if args.dataset in ("both", s.dataset)]
+    kept, skipped = find_disagreements(dev, PromptedJudge.from_config(args.judge, client=None))
+    app, port = ReviewServer(kept, store), tomllib.loads(LABELING_CONFIG.read_text())["review_port"]
+    print(f"{args.judge} on {len(dev)} dev summaries ({args.dataset}): {len(kept)} differ from the human majority "
+          f"label; {skipped} skipped with no cached verdict.\nReviews saved to {path}\n"
+          f"Open http://127.0.0.1:{port}/ and press Ctrl-C to stop.")
+    try:
+        app.server(port).serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="ljvel", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -188,5 +215,11 @@ def main(argv: list[str] | None = None) -> None:
     judge.add_argument("model", help="a key under [llm.models] in configs/judges.toml")
     judge.add_argument("--run", dest="paid", action="store_true", help="call the API, within the cap; replies are cached")
     judge.set_defaults(run=_judge)
+    review = commands.add_parser("review", help="serve a page of the dev summaries where a judge differs from the "
+                                 "human majority label, from cached verdicts only")
+    review.add_argument("--judge", required=True, choices=tomllib.loads(JUDGES_CONFIG.read_text())["llm"]["models"])
+    review.add_argument("--dataset", choices=["cnndm", "xsum", "both"], default="both")
+    review.add_argument("--summary", action="store_true", help="print who was right and the notes, by dataset")
+    review.set_defaults(run=_review)
     args = parser.parse_args(argv)
     args.run(args)
