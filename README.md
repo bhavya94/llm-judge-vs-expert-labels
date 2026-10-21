@@ -13,6 +13,13 @@ Every judge, from word overlap to QAGS itself to a prompted LLM, is scored again
   no license file, so `uv run ljvel download` fetches the files at a pinned commit and checks their SHA-256. Nothing
   from them is committed. Dev holds 315 summaries and test 159, with the same mix of dataset and label. The split
   is frozen in `data/qags_split.json` as ids only.
+- **Judges** (`judges/`, `configs/judges.toml`): every judge takes one summary and returns Pass or Fail with a
+  reason. The first judges are code, free and instant. They pass a summary when enough of its words appear in the
+  article, at 90% and at 100%.
+- **Agreement** (`evaluation/`): TPR is the share of human Passes a judge passes. TNR is the share of human Fails it
+  fails. Cohen's kappa is agreement beyond chance. Each comes with a 95% bootstrap interval. One worker's labels
+  against another's give the ceiling. `uv run ljvel agree` scores every judge on dev, for each dataset and for both;
+  test stays unscored until the final run.
 
 The QASPER sample and labeling page below came first. Labeling 300 answers by hand cost more time than it gave, so
 they are parked. The page stays for a small check of one person's labels.
@@ -35,15 +42,6 @@ they are parked. The page stays for a small check of one person's labels.
   marks Pass or Fail and writes what went wrong in every Fail. `uv run ljvel label` starts the first pass.
   `uv run ljvel label --relabel` starts a blind second pass over 60 of the answers, which measures the labeler's
   self-agreement. `uv run ljvel labels` prints progress and the Fail notes. Labels live in `labels/`.
-- **Judges** (`judges/`, `configs/judges.toml`): every judge takes one answer and returns Pass or Fail with a
-  reason. The first judges are code, free and instant: answer-F1 at three thresholds, and three form checks. Those
-  checks fail an "Unanswerable" that every reference answers, an answer where every reference says Unanswerable, an
-  answer with no citation, and an answer over 35 words.
-- **Agreement** (`evaluation/`): TPR is the share of the person's Passes a judge passes. TNR is the share of their
-  Fails it fails. Cohen's kappa is agreement beyond chance. Each comes with a 95% bootstrap interval. The person's
-  blind relabels against their first labels give the ceiling. `uv run ljvel agree` scores every judge on dev; test
-  stays unscored until the final run.
-
 QASPER (Dasigi et al., 2021) is licensed CC BY 4.0. `data/` holds its questions, answers and the paragraphs the
 labels need.
 

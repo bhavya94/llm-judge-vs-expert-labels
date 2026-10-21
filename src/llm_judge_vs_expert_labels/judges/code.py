@@ -1,58 +1,45 @@
 """Judges written as code: free, instant and deterministic. They are the baseline every LLM judge must beat.
 
-They see what the labeler sees: the question, the references and the answer's citations. Answer-F1 is the metric
-QASPER reports; the checks are rules a reviewer might write before reading any answers.
+A summary that says something the article doesn't often uses words the article doesn't. So the baseline passes a
+summary when enough of its words appear in the article. It reads only the surface: a summary can reuse the article's
+words and still get the facts wrong.
 """
 
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from llm_judge_vs_expert_labels.data.corpus import Corpus
-from llm_judge_vs_expert_labels.data.records import UNANSWERABLE, Candidate
+from llm_judge_vs_expert_labels.data.qags import Summary
 from llm_judge_vs_expert_labels.judges.base import Verdict
 
 CONFIG = Path(__file__).resolve().parents[3] / "configs" / "judges.toml"
 
 
+def words(text: str) -> list[str]:
+    """Lowercase runs of letters and digits. The QAGS texts are mostly lowercased already."""
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
 @dataclass(frozen=True)
-class F1Threshold:
-    """Pass when answer-F1 against the best reference reaches the threshold."""
+class WordOverlap:
+    """Pass when the share of the summary's words found in the article reaches the threshold."""
 
     threshold: float
 
+    @classmethod
+    def from_config(cls, path: Path = CONFIG) -> list["WordOverlap"]:
+        return [cls(t) for t in tomllib.loads(path.read_text())["overlap"]["thresholds"]]
+
     @property
     def name(self) -> str:
-        return f"answer-F1 >= {self.threshold:g}"
+        return f"words in article >= {self.threshold:g}"
 
-    def judge(self, candidate: Candidate) -> Verdict:
-        if candidate.answer_f1 >= self.threshold:
+    def judge(self, summary: Summary) -> Verdict:
+        article = set(words(summary.article))
+        summary_words = words(summary.text)
+        missing = [w for w in summary_words if w not in article]
+        share = 1 - len(missing) / len(summary_words) if summary_words else 1.0
+        if share >= self.threshold:
             return Verdict(True, "")
-        return Verdict(False, f"answer-F1 {candidate.answer_f1:.2f} is below {self.threshold:g}")
-
-
-class CodeChecks:
-    """Three checks, each a rule about form rather than meaning. Fails at the first check that fails."""
-
-    name = "code checks"
-
-    def __init__(self, corpus: Corpus, max_words: int):
-        self.corpus = corpus
-        self.max_words = max_words
-
-    @classmethod
-    def from_config(cls, corpus: Corpus, path: Path = CONFIG) -> "CodeChecks":
-        return cls(corpus, tomllib.loads(path.read_text())["code_checks"]["max_answer_words"])
-
-    def judge(self, candidate: Candidate) -> Verdict:
-        references = self.corpus.questions[candidate.question_id].references
-        unanswerable = [r.text == UNANSWERABLE for r in references]
-        if candidate.unanswerable and not any(unanswerable):
-            return Verdict(False, "says Unanswerable, but every reference answers the question")
-        if not candidate.unanswerable and all(unanswerable):
-            return Verdict(False, "answers, but every reference says the paper doesn't")
-        if not candidate.unanswerable and not candidate.cited:
-            return Verdict(False, "gives an answer but cites no paragraph")
-        if (words := len(candidate.answer.split())) > self.max_words:
-            return Verdict(False, f"{words} words, more than {self.max_words}")
-        return Verdict(True, "")
+        return Verdict(False, f"{share:.0%} of words in the article; missing: {', '.join(missing[:5])}")
