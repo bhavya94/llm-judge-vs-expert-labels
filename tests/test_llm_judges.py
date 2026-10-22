@@ -1,7 +1,7 @@
 import json
-from types import SimpleNamespace
 
 import pytest
+from conftest import FakeClient
 
 from llm_judge_vs_expert_labels.data.qags import Sentence, Summary
 from llm_judge_vs_expert_labels.judges.prompted import PromptedJudge, parse, render
@@ -11,19 +11,6 @@ ANSWER = Summary("cnndm", "Police said three armed men robbed a van in Glasgow o
                  (Sentence("Three men robbed a van.", (True, True, True)),
                   Sentence("It happened in Glasgow.", (True, True, False))))
 PASS = json.dumps({"reason": "Both sentences match the article.", "verdict": "pass"})
-
-
-class FakeClient:
-    """Replies with the queued texts in order and records every request."""
-
-    def __init__(self, *replies):
-        self.replies, self.requests = list(replies), []
-        self.messages = self
-
-    def create(self, **request):
-        self.requests.append(request)
-        return SimpleNamespace(content=[SimpleNamespace(type="text", text=self.replies.pop(0))],
-                               usage=SimpleNamespace(input_tokens=1000, output_tokens=50))
 
 
 def _judge(client, tmp_path, cap=1.0) -> PromptedJudge:

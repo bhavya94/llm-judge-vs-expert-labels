@@ -27,3 +27,12 @@ output_price = 5.0
 id = "claude-sonnet-5-5"
 input_price = 3.0
 output_price = 15.0
+
+[qags]
+# QAGS with an LLM writing and answering the questions. Three calls per summary.
+model = "haiku"
+max_questions = 10
+max_tokens = 600
+# Pass when the mean answer F1 reaches the threshold. Chosen after reading the dev scores: 0.6 gives XSum its best
+# kappa (0.29) and 0.8 gives CNN/DM its best (0.26). Test will show how much that choice flatters dev.
+thresholds = [0.6, 0.8]
